@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Auditoría Online - Orange</title>
+    <!-- SDK de Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, Arial, sans-serif; }
+        body { background: #000000; color: #ffffff; padding: 18px; }
+        .container { max-width: 1300px; margin: auto; }
+        h1 { color: #fde047; font-size: 1.7rem; text-shadow: 0 0 10px rgba(253, 224, 71, 0.3); }
+        .sub { color: #d1d5db; margin-bottom: 18px; font-size: 0.9rem; }
+        .status-cloud { display: inline-flex; align-items: center; gap: 6px; background: #052e16; color: #4ade80; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; border: 1px solid #16a34a; font-weight: bold; }
+        .card { background: #0d0d0d; border: 2px solid #fde047; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+        label { display: block; color: #fde047; font-size: 0.8rem; font-weight: bold; margin-bottom: 6px; text-transform: uppercase; }
+        textarea { width: 100%; min-height: 120px; resize: vertical; padding: 12px; background: #000000; border: 2px solid #fde047; color: #ffffff; border-radius: 8px; font-size: 0.95rem; font-weight: 500; }
+        button { border: none; border-radius: 7px; padding: 10px 16px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+        .btn-yellow { background: #fde047; color: #000000; }
+        .btn-red { background: #dc2626; color: #ffffff; }
+        .btn-green { background: #16a34a; color: #ffffff; }
+
+        .kpis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 18px; }
+        .kpi-card { background: #000000; border: 2px solid #333333; border-radius: 8px; padding: 14px; text-align: center; }
+        .kpi-card.danger { border-color: #f87171; }
+        .kpi-card.warning { border-color: #fb923c; }
+        .kpi-card.success { border-color: #4ade80; }
+        .kpi-val { font-size: 1.8rem; font-weight: 900; margin: 4px 0; }
+        .kpi-label { font-size: 0.75rem; text-transform: uppercase; color: #9ca3af; font-weight: 600; }
+
+        .tabla-scroll { overflow-x: auto; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1100px; }
+        th { background: #fde047; color: #000000; font-size: 0.75rem; text-transform: uppercase; padding: 10px 6px; text-align: left; font-weight: 800; }
+        td { padding: 10px 6px; border-bottom: 1px solid #262626; font-size: 0.88rem; color: #ffffff; }
+        tr:hover td { background: #141414; }
+
+        .input-mini { width: 75px; padding: 6px; background: #000000; color: #ffffff; border: 1px solid #fde047; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.9rem; }
+        .ok { color: #4ade80; font-weight: bold; }
+        .faltante { color: #f87171; font-weight: bold; }
+        .sobrante { color: #fb923c; font-weight: bold; }
+        .info { color: #fde047; font-weight: bold; }
+
+        .alerta { background: #450a0a; border: 2px solid #f87171; color: #ffffff; padding: 12px; border-radius: 8px; margin: 12px 0; display: none; }
+        .alerta-apertura { background: #451a03; border: 2px solid #fb923c; color: #ffffff; padding: 12px; border-radius: 8px; margin: 12px 0; display: none; }
+        .historial-item { background: #000000; border: 1px solid #333333; padding: 10px 14px; border-radius: 7px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 10px;">
+        <div>
+            <h1>🔍 Panel de Auditoría Multiusuario (Online)</h1>
+            <p class="sub">Toda la información cargada se sincroniza en tiempo real con todos los socios y encargados.</p>
+        </div>
+        <div>
+            <span class="status-cloud" id="cloud-indicator">🟢 Conectado a la Nube (Firebase)</span>
+        </div>
+    </div>
+
+    <!-- 1. CARGA DE REPORTE -->
+    <div class="card">
+        <label>📥 Pegar Reporte de WhatsApp (Barra o Cocina):</label>
+        <textarea id="txt-reporte" placeholder="Pegá acá el texto completo que te mandaron por WhatsApp..."></textarea>
+        <button class="btn-yellow" style="margin-top:10px; width:100%; padding:14px; font-size:1rem;" onclick="procesarYSubirReporte()">
+            ⚡ GUARDAR EN LA NUBE Y AUDITAR
+        </button>
+    </div>
+
+    <!-- 2. RESULTADOS AUDITORÍA -->
+    <div class="card" id="seccion-tabla" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+            <h2 id="titulo-sector" style="color:#fde047;">📊 Auditoría del Turno</h2>
+            <span id="info-turno" class="info" style="font-size:0.95rem;"></span>
+        </div>
+
+        <div class="kpis-grid">
+            <div class="kpi-card danger">
+                <div class="kpi-label">Pérdida Estimada ($)</div>
+                <div class="kpi-val faltante" id="kpi-dinero">$0.00</div>
+                <span style="font-size:0.75rem; color:#9ca3af;" id="kpi-unidades">0 unid. faltantes</span>
+            </div>
+            <div class="kpi-card warning">
+                <div class="kpi-label">Mermas + Desperdicios</div>
+                <div class="kpi-val sobrante" id="kpi-mermas">0.00</div>
+                <span style="font-size:0.75rem; color:#9ca3af;">unidades descartadas</span>
+            </div>
+            <div class="kpi-card success">
+                <div class="kpi-label">Productos Auditados</div>
+                <div class="kpi-val ok" id="kpi-total-prods">0</div>
+                <span style="font-size:0.75rem; color:#9ca3af;" id="kpi-cuadrados">0 cuadrados</span>
+            </div>
+        </div>
+
+        <div id="alerta-apertura" class="alerta-apertura"></div>
+        <div id="alerta-faltantes" class="alerta">
+            🚨 <strong>¡ATENCIÓN!</strong> Se detectaron faltantes de mercadería no registrada en ventas.
+        </div>
+
+        <div class="tabla-scroll">
+            <table>
+                <thead>
+                    <tr id="encabezado-tabla">
+                        <th>Producto</th>
+                        <th>Fin Ayer</th>
+                        <th>Inicio</th>
+                        <th>Dif. Apert.</th>
+                        <th>Ingresos</th>
+                        <th id="th-extra1">Mermas</th>
+                        <th id="th-extra2">Desperdicio</th>
+                        <th>Fin Hoy</th>
+                        <th>Consumo Físico</th>
+                        <th style="background:#facc15;">Ventas Sistema</th>
+                        <th>Faltante</th>
+                        <th style="background:#facc15;">Precio Venta ($)</th>
+                        <th>Pérdida ($)</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="body-auditoria"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. CONFIGURACIÓN MASIVA DE PRECIOS -->
+    <div class="card">
+        <h2 style="color:#fde047; margin-bottom:8px;">⚙️ Precios Sincronizados en la Nube</h2>
+        <p class="sub">Los precios que guardes acá se actualizan para todos los usuarios automáticamente.</p>
+        
+        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr auto; gap:8px; align-items:end;">
+            <div>
+                <label>Nombre Producto</label>
+                <input type="text" id="cfg-prod-nom" placeholder="Ej: Fernet 750cc" style="width:100%; padding:8px; background:#000; border:1px solid #fde047; color:#fff; border-radius:6px;">
+            </div>
+            <div>
+                <label>Precio ($)</label>
+                <input type="number" id="cfg-prod-precio" placeholder="Ej: 6500" style="width:100%; padding:8px; background:#000; border:1px solid #fde047; color:#fff; border-radius:6px;">
+            </div>
+            <div>
+                <label>Stock Mínimo</label>
+                <input type="number" id="cfg-prod-min" placeholder="Ej: 5" style="width:100%; padding:8px; background:#000; border:1px solid #fde047; color:#fff; border-radius:6px;">
+            </div>
+            <button class="btn-yellow" onclick="guardarPrecioNube()">Guardar</button>
+        </div>
+
+        <div id="lista-precios-guardados" style="margin-top:15px; max-height:160px; overflow-y:auto;"></div>
+    </div>
+
+    <!-- 4. HISTORIAL ONLINE -->
+    <div class="card">
+        <h2 style="color:#fde047; margin-bottom:8px;">🗂️ Historial Centralizado (En la Nube)</h2>
+        <div id="lista-historial"></div>
+    </div>
+
+</div>
+
+<script>
+    // ==========================================
+    // ⚙️ TUS CLAVES DE FIREBASE CONFIGURADAS
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyDMlVRIsj_x1o1N_2FcWDaCtmRYiiyDOpo",
+        authDomain: "auditoriastockorange.firebaseapp.com",
+        databaseURL: "https://auditoriastockorange-default-rtdb.firebaseio.com",
+        projectId: "auditoriastockorange",
+        storageBucket: "auditoriastockorange.firebasestorage.app",
+        messagingSenderId: "425154762634",
+        appId: "1:425154762634:web:bcf3cba0aaf7b673331a73",
+        measurementId: "G-TC2B6504Y0"
+    };
+
+    let db;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+    } catch(e) {
+        console.error("Error conectando a Firebase:", e);
+        document.getElementById('cloud-indicator').innerText = '🔴 Error de conexión';
+        document.getElementById('cloud-indicator').style.borderColor = '#ef4444';
+        document.getElementById('cloud-indicator').style.color = '#ef4444';
+    }
+
+    let datosProcesados = [], sectorActual = 'BARRA';
+    let basePrecios = {};
+    let historialAuditoria = [];
+
+    function leerNumero(val) { return parseFloat(val) || 0; }
+
+    // Escuchar Precios en Tiempo Real desde Firebase
+    if (db) {
+        db.ref('precios').on('value', snap => {
+            basePrecios = snap.val() || {};
+            renderListaPrecios();
+            if (datosProcesados.length > 0) renderTabla();
+        });
+
+        // Escuchar Historial en Tiempo Real desde Firebase
+        db.ref('historial').on('value', snap => {
+            const data = snap.val() || {};
+            historialAuditoria = Object.values(data);
+            renderHistorial();
+        });
+    }
+
+    function procesarYSubirReporte() {
+        const texto = document.getElementById('txt-reporte').value.trim();
+        if (!texto) return alert('Pegá el reporte de WhatsApp primero.');
+
+        sectorActual = texto.includes('COCINA') ? 'COCINA' : 'BARRA';
+        document.getElementById('titulo-sector').innerText = `📊 Auditoría Sector: ${sectorActual}`;
+
+        const matchResp = texto.match(/Responsable:\*\s*(.+)/);
+        const matchFecha = texto.match(/Fecha:\*\s*(.+)/);
+        const responsable = matchResp ? matchResp[1].trim() : 'No especificado';
+        const fecha = matchFecha ? matchFecha[1].trim() : 'Sin fecha';
+
+        document.getElementById('info-turno').innerText = `👤 ${responsable} | 📅 ${fecha}`;
+        datosProcesados = [];
+
+        if (sectorActual === 'COCINA') {
+            const regexCocina = /•\s*(.+?)(?:\s*\((.*?)\))?\s*\|\s*INI:\[([\d.]+)\]\s*ING:\[([\d.]+)\]\s*ELA:\[([\d.]+)\]\s*MER:\[([\d.]+)\]\s*DES:\[([\d.]+)\]\s*PER:\[([\d.]+)\]\s*DEV:\[([\d.]+)\]\s*FIN:\[([\d.]+)\]/g;
+            let match;
+            while ((match = regexCocina.exec(texto)) !== null) {
+                const nombre = match[1].trim();
+                datosProcesados.push({
+                    nombre, unidad: match[2] || 'Un',
+                    ini: leerNumero(match[3]), ing: leerNumero(match[4]), ela: leerNumero(match[5]),
+                    mer: leerNumero(match[6]), des: leerNumero(match[7]), per: leerNumero(match[8]),
+                    dev: leerNumero(match[9]), fin: leerNumero(match[10]), ventas: 0,
+                    precio: basePrecios[nombre]?.precio || 0, stockMin: basePrecios[nombre]?.min || 0, finAyer: null
+                });
+            }
+        } else {
+            const regexBarra = /•\s*(.+?)\s*\|\s*INI:\[([\d.]+)\]\s*ING:\[([\d.]+)\]\s*MER:\[([\d.]+)\]\s*DES:\[([\d.]+)\]\s*FIN:\[([\d.]+)\]/g;
+            let match;
+            while ((match = regexBarra.exec(texto)) !== null) {
+                const nombre = match[1].trim();
+                datosProcesados.push({
+                    nombre, unidad: 'Un',
+                    ini: leerNumero(match[2]), ing: leerNumero(match[3]), ela: 0,
+                    mer: leerNumero(match[4]), des: leerNumero(match[5]), per: 0, dev: 0,
+                    fin: leerNumero(match[6]), ventas: 0,
+                    precio: basePrecios[nombre]?.precio || 0, stockMin: basePrecios[nombre]?.min || 0, finAyer: null
+                });
+            }
+        }
+
+        if (datosProcesados.length === 0) return alert('No se pudo leer el reporte.');
+
+        const reporteAnterior = obtenerReporteAnterior(fecha, sectorActual);
+        if (reporteAnterior) {
+            datosProcesados.forEach(item => {
+                const prodAnt = reporteAnterior.productos.find(p => p.nombre.toLowerCase() === item.nombre.toLowerCase());
+                if (prodAnt) item.finAyer = prodAnt.fin;
+            });
+        }
+
+        // Subir a Firebase en tiempo real
+        if (db) {
+            const idReporte = `${fecha}_${sectorActual}_${responsable}`.replace(/[\/\.\#\$\[\]\s]/g, '_');
+            db.ref('historial/' + idReporte).set({
+                fecha, responsable, texto, sector: sectorActual,
+                productos: datosProcesados.map(p => ({ nombre: p.nombre, fin: p.fin })),
+                guardadoEn: new Date().toLocaleString()
+            });
+        }
+
+        renderTabla();
+        document.getElementById('seccion-tabla').style.display = 'block';
+        document.getElementById('seccion-tabla').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function obtenerReporteAnterior(fechaActual, sector) {
+        for (let i = historialAuditoria.length - 1; i >= 0; i--) {
+            if (historialAuditoria[i].fecha !== fechaActual && historialAuditoria[i].sector === sector) {
+                return historialAuditoria[i];
+            }
+        }
+        return null;
+    }
+
+    function renderTabla() {
+        const tbody = document.getElementById('body-auditoria');
+        tbody.innerHTML = '';
+
+        let totalDineroPerdido = 0, totalUnidadesFaltantes = 0, totalMermasDesp = 0, totalCuadrados = 0;
+        let hayFaltantes = false, hayDifApertura = false, textoApertura = '';
+
+        document.getElementById('th-extra1').innerText = sectorActual === 'COCINA' ? 'Elab / Mer' : 'Mermas';
+        document.getElementById('th-extra2').innerText = sectorActual === 'COCINA' ? 'Desp / Pers' : 'Desperdicio';
+
+        datosProcesados.forEach((item, idx) => {
+            const difApertura = item.finAyer === null ? null : item.ini - item.finAyer;
+            if (difApertura !== null && difApertura !== 0) {
+                hayDifApertura = true;
+                textoApertura += `• ${item.nombre}: Ayer cerró con ${item.finAyer} y hoy abrió con ${item.ini} (Dif: ${difApertura > 0 ? '+' : ''}${difApertura.toFixed(2)})<br>`;
+            }
+
+            const consumoReal = (item.ini + item.ing + item.dev) - item.ela - item.mer - item.des - item.per - item.fin;
+            const diferencia = item.ventas - consumoReal;
+            const dineroPerdido = diferencia < 0 ? Math.abs(diferencia) * item.precio : 0;
+
+            if (diferencia < 0) {
+                totalDineroPerdido += dineroPerdido;
+                totalUnidadesFaltantes += Math.abs(diferencia);
+                hayFaltantes = true;
+            } else if (diferencia === 0) totalCuadrados++;
+
+            totalMermasDesp += (item.mer + item.des + item.per);
+
+            let estadoBadge = `<span class="ok">✅ OK</span>`;
+            if (diferencia < 0) estadoBadge = `<span class="faltante">❌ FALTA ${Math.abs(diferencia).toFixed(2)}</span>`;
+            if (diferencia > 0) estadoBadge = `<span class="sobrante">⚠️ SOBRA +${diferencia.toFixed(2)}</span>`;
+
+            let txtFinAyer = item.finAyer === null ? '-' : item.finAyer;
+            let txtDifAp = difApertura === null ? '-' : (difApertura > 0 ? '+' : '') + difApertura.toFixed(2);
+            let clDifAp = difApertura < 0 ? 'faltante' : (difApertura > 0 ? 'sobrante' : 'ok');
+
+            let celdaExtra1 = sectorActual === 'COCINA' ? `-${item.ela} / -${item.mer}` : `-${item.mer}`;
+            let celdaExtra2 = sectorActual === 'COCINA' ? `-${item.des} / -${item.per}` : `-${item.des}`;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong style="color:#fde047;">${item.nombre}</strong></td>
+                    <td>${txtFinAyer}</td>
+                    <td>${item.ini}</td>
+                    <td class="${clDifAp}">${txtDifAp}</td>
+                    <td class="ok">+${item.ing}</td>
+                    <td class="sobrante">${celdaExtra1}</td>
+                    <td class="faltante">${celdaExtra2}</td>
+                    <td><strong>${item.fin}</strong></td>
+                    <td class="info">${consumoReal.toFixed(2)}</td>
+                    <td><input type="number" step="0.01" class="input-mini" value="${item.ventas}" oninput="actualizarVentas(${idx}, this.value)"></td>
+                    <td class="${diferencia < 0 ? 'faltante' : (diferencia > 0 ? 'sobrante' : 'ok')}">${diferencia > 0 ? '+' : ''}${diferencia.toFixed(2)}</td>
+                    <td><input type="number" class="input-mini" value="${item.precio}" oninput="actualizarPrecio(${idx}, this.value)"></td>
+                    <td style="color:#f87171; font-weight:bold;">${dineroPerdido > 0 ? '-$' + dineroPerdido.toLocaleString() : '$0'}</td>
+                    <td>${estadoBadge}</td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('kpi-dinero').innerText = `-$${totalDineroPerdido.toLocaleString()}`;
+        document.getElementById('kpi-unidades').innerText = `${totalUnidadesFaltantes.toFixed(2)} unid. sin cobrar`;
+        document.getElementById('kpi-mermas').innerText = totalMermasDesp.toFixed(2);
+        document.getElementById('kpi-total-prods').innerText = datosProcesados.length;
+        document.getElementById('kpi-cuadrados').innerText = `${totalCuadrados} de ${datosProcesados.length} perfectos`;
+
+        const alAp = document.getElementById('alerta-apertura');
+        alAp.style.display = hayDifApertura ? 'block' : 'none';
+        if (hayDifApertura) alAp.innerHTML = `⚠️ <strong>DIFERENCIAS EN LA APERTURA HOY:</strong><br>${textoApertura}`;
+        document.getElementById('alerta-faltantes').style.display = hayFaltantes ? 'block' : 'none';
+    }
+
+    function actualizarVentas(idx, val) { datosProcesados[idx].ventas = leerNumero(val); renderTabla(); }
+    
+    function actualizarPrecio(idx, val) {
+        const p = leerNumero(val);
+        datosProcesados[idx].precio = p;
+        const nom = datosProcesados[idx].nombre;
+        if (db) db.ref('precios/' + nom).set({ precio: p, min: basePrecios[nom]?.min || 0 });
+    }
+
+    function guardarPrecioNube() {
+        const nom = document.getElementById('cfg-prod-nom').value.trim();
+        const precio = leerNumero(document.getElementById('cfg-prod-precio').value);
+        const min = leerNumero(document.getElementById('cfg-prod-min').value);
+        if (!nom) return alert('Ingresá el nombre');
+        if (db) db.ref('precios/' + nom).set({ precio, min });
+        document.getElementById('cfg-prod-nom').value = '';
+        document.getElementById('cfg-prod-precio').value = '';
+        document.getElementById('cfg-prod-min').value = '';
+    }
+
+    function renderListaPrecios() {
+        const div = document.getElementById('lista-precios-guardados');
+        div.innerHTML = '';
+        Object.keys(basePrecios).forEach(nom => {
+            const p = basePrecios[nom];
+            div.innerHTML += `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #262626; font-size:0.85rem;">
+                    <span><strong>${nom}</strong> ➔ <span style="color:#4ade80;">$${p.precio}</span> | Mín: <span style="color:#fde047;">${p.min}</span></span>
+                    <span style="color:#ef4444; cursor:pointer;" onclick="if(db) db.ref('precios/${nom}').remove()">✕ Eliminar</span>
+                </div>
+            `;
+        });
+    }
+
+    function renderHistorial() {
+        const lista = document.getElementById('lista-historial');
+        lista.innerHTML = historialAuditoria.length === 0 ? '<p style="color:#9ca3af;">No hay reportes en la nube.</p>' : '';
+        [...historialAuditoria].reverse().forEach(r => {
+            lista.innerHTML += `
+                <div class="historial-item">
+                    <div><strong style="color:#fde047;">📅 ${r.fecha} [${r.sector}]</strong><small style="color:#9ca3af; display:block;">Resp: ${r.responsable}</small></div>
+                    <button class="btn-yellow" onclick='document.getElementById("txt-reporte").value = ${JSON.stringify(r.texto)}; procesarYSubirReporte(); window.scrollTo({ top: 0, behavior: "smooth" });'>Abrir</button>
+                </div>
+            `;
+        });
+    }
+</script>
+</body>
+</html>
